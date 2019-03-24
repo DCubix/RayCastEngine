@@ -230,7 +230,7 @@ class RayCastGame : public GameAdapter {
 public:
 	void onSetup(GameCanvas *canvas) {
 		viewer.position = Vec3(8.0f, 8.0f, 0.0f);
-		viewer.fov = rad(30);
+		viewer.fov = rad(90);
 
 		tfloor = Texture("floor.png");
 		tceil = Texture("ceiling.png");
@@ -257,13 +257,13 @@ public:
 	void onUpdate(GameCanvas *canvas, f32 dt) {
 		if (canvas->isHeld(SDLK_x)) {
 			viewer.fov += dt;
-			if (viewer.fov >= rad(180)) {
-				viewer.fov = rad(180);
+			if (viewer.fov >= rad(120)) {
+				viewer.fov = rad(120);
 			}
 		} else if (canvas->isHeld(SDLK_z)) {
 			viewer.fov -= dt;
-			if (viewer.fov <= rad(-180)) {
-				viewer.fov = rad(-180);
+			if (viewer.fov <= rad(20)) {
+				viewer.fov = rad(20);
 			}
 		}
 
@@ -311,20 +311,30 @@ public:
 
 		const f32 w2 = canvas->width() / 2;
 		const f32 h2 = canvas->height() / 2;
+		
+		const f32 thf = ::tanf(viewer.fov / 2.0f);
+		const f32 planeDist = w2 / thf;
+		Vec3 plane(
+			0.0f,
+			thf,
+			0.0f
+		);
+		plane = plane.rotateZ(viewer.rotation);
 
 		for (u32 x = 0; x < canvas->width(); x++) {
 			// Calculate the angle of the ray
 			const f32 xf = (f32(x) / f32(canvas->width())) * 2.0f - 1.0f;
-			const f32 fovPercent = (viewer.fov / 2.0f) * xf;
-			const f32 rayAngle = viewer.rotation + fovPercent / ::tanf(viewer.fov / 2.0f);
 
-			// Calculate the distance
 			Vec3 rayPos = viewer.position;
-			Vec3 rayDir(rayAngle);
+			Vec3 rayDir(
+				::cosf(viewer.rotation) + plane.x * xf,
+				::sinf(viewer.rotation) + plane.y * xf,
+				0.0f
+			);
 
 			HitInfo info;
 			if (rayLines(rayPos, rayDir, info) && info.distance < maxDepth) {
-				const f32 d = info.distance * ::cosf(fovPercent);
+				const f32 d = info.distance * thf;
 				const f32 ceil = h2 - f32(canvas->height()) / d;
 				const f32 floor = canvas->height() - ceil;
 				const f32 wh = floor - ceil;
