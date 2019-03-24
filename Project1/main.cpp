@@ -41,6 +41,7 @@ struct Vec3 {
 
 	Vec3 operator +(const Vec3& o) const { return Vec3(x + o.x, y + o.y, z + o.z); }
 	Vec3 operator -(const Vec3& o) const { return Vec3(x - o.x, y - o.y, z - o.z); }
+	Vec3 operator *(const Vec3& o) const { return Vec3(x * o.x, y * o.y, z * o.z); }
 	Vec3 operator *(f32 o) const { return Vec3(x * o, y * o, z * o); }
 	Vec3 operator /(f32 o) const { return Vec3(x / o, y / o, z / o); }
 };
@@ -229,6 +230,7 @@ class RayCastGame : public GameAdapter {
 public:
 	void onSetup(GameCanvas *canvas) {
 		viewer.position = Vec3(8.0f, 8.0f, 0.0f);
+		viewer.fov = rad(30);
 
 		tfloor = Texture("floor.png");
 		tceil = Texture("ceiling.png");
@@ -239,10 +241,10 @@ public:
 		main->texture = twall;
 		add(main);
 
-		const u32 pillars = 12;
+		const u32 pillars = 16;
 		const f32 step = (M_PI * 2.0f) / pillars;
 		for (f32 r = 0.0f; r < M_PI * 2.0f; r += step) {
-			Pillar* pil = new Pillar(::cosf(r) + 1.5f, ::sinf(r) + 1.5f, 0.15f);
+			Pillar* pil = new Pillar(::cosf(r) + 1.5f, ::sinf(r) + 1.5f, 0.1f);
 			pil->texture = tpillar;
 			add(pil);
 		}
@@ -253,6 +255,18 @@ public:
 	}
 
 	void onUpdate(GameCanvas *canvas, f32 dt) {
+		if (canvas->isHeld(SDLK_x)) {
+			viewer.fov += dt;
+			if (viewer.fov >= rad(180)) {
+				viewer.fov = rad(180);
+			}
+		} else if (canvas->isHeld(SDLK_z)) {
+			viewer.fov -= dt;
+			if (viewer.fov <= rad(-180)) {
+				viewer.fov = rad(-180);
+			}
+		}
+
 		if (canvas->isHeld(SDLK_LEFT)) {
 			viewer.rotation -= dt * 1.8f;
 		} else if (canvas->isHeld(SDLK_RIGHT)) {
@@ -263,13 +277,15 @@ public:
 		if (canvas->isHeld(SDLK_UP)) {
 			Vec3 delta = dir * dt * 4.0f;
 			viewer.position = viewer.position + delta;
-			i32 x = i32(std::floor(viewer.position.x));
-			i32 y = i32(std::floor(viewer.position.y));
+			if (circleLines(viewer.position, 0.8f)) {
+				viewer.position = viewer.position - delta;
+			}
 		} else if (canvas->isHeld(SDLK_DOWN)) {
 			Vec3 delta = dir * dt * 4.0f;
 			viewer.position = viewer.position - delta;
-			i32 x = i32(std::floor(viewer.position.x));
-			i32 y = i32(std::floor(viewer.position.y));
+			if (circleLines(viewer.position, 0.8f)) {
+				viewer.position = viewer.position + delta;
+			}
 		}
 	}
 
@@ -295,10 +311,6 @@ public:
 
 		const f32 w2 = canvas->width() / 2;
 		const f32 h2 = canvas->height() / 2;
-
-		const f32 viewPlaneDist = w2 / ::tanf(viewer.fov / 2.0f);
-
-		const Vec3 L(-1.0f, 1.0f, 0.0f);
 
 		for (u32 x = 0; x < canvas->width(); x++) {
 			// Calculate the angle of the ray
@@ -339,6 +351,9 @@ public:
 						Vec3 c = info.line->texture->sample(u, v) * fog;
 						canvas->put(x, y, c.x, c.y, c.z);
 					} else { // Floor
+						f32 u = info.line->uv(info.u);
+						f32 v = f32(y - floor) / wh;
+
 						f32 dist = f32(canvas->height()) / (y - h2);
 						f32 we = (dist / d);
 						f32 cfog = std::min(((y - h2) / maxDepth), 1.0f);
@@ -347,39 +362,42 @@ public:
 						f32 fv = (we * fwy + (1.0f - we) * viewer.position.y) / 2.0f;
 
 						Vec3 c = tfloor.sample(fu, fv) * cfog;
+						if (v < 1.0f) {
+							f32 mixFac = (1.0f - v) * we;
+							Vec3 t = info.line->texture->sample(u, 1.0f - v) * fog * cfog;
+							c = c + t * mixFac;
+						}
 						canvas->put(x, y, c.x, c.y, c.z);
 					}
 				}
-
-				canvas->line(
-					viewer.position.x,
-					viewer.position.y,
-					info.position.x,
-					info.position.y,
-					0.0f,
-					0.0f,
-					1.0f
-				);
 			}
 		}
 
-		canvas->line(
-			viewer.position.x,
-			viewer.position.y,
-			viewer.position.x + ::cosf(viewer.rotation) * 10.0f,
-			viewer.position.y + ::sinf(viewer.rotation) * 10.0f,
-			0.0f,
-			1.0f,
-			0.0f
-		);
+		canvas->str("X: " + std::to_string(viewer.position.x), 5, 5);
+		canvas->str("Y: " + std::to_string(viewer.position.y), 5, 13);
+	}
 
-		for (auto&& ln : lines) {
-			canvas->line(
-				ln.a.x * blockSize, ln.a.y * blockSize,
-				ln.b.x * blockSize, ln.b.y * blockSize,
-				1.0f, 1.0f, 1.0f
-			);
+	Vec3 closestPoint(const Vec3& a, const Vec3& b, const Vec3& p, f32& t) {
+		Vec3 ap = p - a;
+		Vec3 ab = b - a;
+		f32 atb = ab.dot(ab);
+		f32 apab = ap.dot(ab);
+		t = apab / atb;
+		return a + ab * t;
+	}
+
+	bool circleLines(const Vec3& o, f32 radius) {
+		for (auto&& line : lines) {
+			f32 t;
+			Vec3 p = closestPoint(line.a * blockSize, line.b * blockSize, o, t);
+			if (t >= 0.0f && t <= 1.0f) {
+				f32 d = (p - o).length();
+				if (d < radius) {
+					return true;
+				}
+			}
 		}
+		return false;
 	}
 
 	bool rayLines(const Vec3& o, const Vec3& d, HitInfo& info) {

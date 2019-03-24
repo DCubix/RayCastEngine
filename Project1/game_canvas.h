@@ -26,6 +26,9 @@ public:
 	void rect(i32 x, i32 y, u32 w, u32 h, f32 r, f32 g, f32 b);
 	void line(i32 x1, i32 y1, i32 x2, i32 y2, f32 r, f32 g, f32 b);
 
+	i32 chr(char c, i32 x, i32 y, f32 r = 1.0f, f32 g = 1.0f, f32 b = 1.0f);
+	i32 str(const std::string& txt, i32 x, i32 y, f32 r = 1.0f, f32 g = 1.0f, f32 b = 1.0f);
+
 	i32 run();
 
 	u32 width() const { return m_width; }
