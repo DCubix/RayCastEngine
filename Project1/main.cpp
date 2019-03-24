@@ -77,7 +77,7 @@ inline bool raySeg(
 }
 
 const f32 blockSize = 8.0f;
-const f32 maxDepth = 100.0f;
+const f32 maxDepth = 60.0f;
 
 class Texture {
 public:
@@ -176,8 +176,8 @@ struct Block : public Model {
 		position.x = x;
 		position.y = y;
 
-		const f32 u1 = w;
-		const f32 u2 = h;
+		const f32 u1 = w*2.0f;
+		const f32 u2 = h*2.0f;
 		addVert(Vec3(0, 0, 0), 0);
 		addVert(Vec3(w, 0, 0), u1);
 		addVert(Vec3(w, 0, 0), 0);
@@ -206,7 +206,7 @@ struct Pillar : public Model {
 		const u32 segments = 12;
 		const f32 step = (M_PI * 2.0f) / segments;
 		const f32 maxu = M_PI * 2.0f * radius;
-		const f32 ustep = maxu / segments;
+		const f32 ustep = maxu / (segments / 2.0f);
 
 		f32 u = 0.0f;
 		for (f32 a = 0.0f; a < M_PI * 2.0f; a += step) {
@@ -215,7 +215,6 @@ struct Pillar : public Model {
 			addVert(Vec3(cx + x, cy + y, 0.0f), u);
 			u += ustep;
 		}
-		vertices[0].u = ustep;
 
 		for (u32 i = 0; i < segments-1; i++) {
 			addIndex(i);
@@ -318,7 +317,7 @@ public:
 				const f32 floor = canvas->height() - ceil;
 				const f32 wh = floor - ceil;
 
-				f32 fog = 1.0f - (d / maxDepth) + 0.05f;
+				f32 fog = 1.0f - (d / maxDepth);
 				for (u32 y = 0; y < canvas->height(); y++) {
 					f32 fwx = info.position.x;
 					f32 fwy = info.position.y;
@@ -326,29 +325,41 @@ public:
 					if (y <= ceil) {
 						f32 dist = f32(canvas->height()) / ((canvas->height() - y) - h2);
 						f32 we = (dist / d);
+						f32 cfog = std::min(((h2 - y) / maxDepth), 1.0f);
 
 						f32 fu = (we * fwx + (1.0f - we) * viewer.position.x) / 2.0f;
 						f32 fv = (we * fwy + (1.0f - we) * viewer.position.y) / 2.0f;
 
-						Vec3 c = tceil.sample(fu, fv);
+						Vec3 c = tceil.sample(fu, fv) * cfog;
 						canvas->put(x, y, c.x, c.y, c.z);
 					} else if (y > ceil && y <= floor) {
 						f32 u = info.line->uv(info.u);
 						f32 v = f32(y - ceil) / wh;
 						
-						Vec3 c = info.line->texture->sample(u, v);
+						Vec3 c = info.line->texture->sample(u, v) * fog;
 						canvas->put(x, y, c.x, c.y, c.z);
 					} else { // Floor
 						f32 dist = f32(canvas->height()) / (y - h2);
 						f32 we = (dist / d);
+						f32 cfog = std::min(((y - h2) / maxDepth), 1.0f);
 
 						f32 fu = (we * fwx + (1.0f - we) * viewer.position.x) / 2.0f;
 						f32 fv = (we * fwy + (1.0f - we) * viewer.position.y) / 2.0f;
 
-						Vec3 c = tfloor.sample(fu, fv);
+						Vec3 c = tfloor.sample(fu, fv) * cfog;
 						canvas->put(x, y, c.x, c.y, c.z);
 					}
 				}
+
+				canvas->line(
+					viewer.position.x,
+					viewer.position.y,
+					info.position.x,
+					info.position.y,
+					0.0f,
+					0.0f,
+					1.0f
+				);
 			}
 		}
 
@@ -366,7 +377,7 @@ public:
 			canvas->line(
 				ln.a.x * blockSize, ln.a.y * blockSize,
 				ln.b.x * blockSize, ln.b.y * blockSize,
-				1.0f, 0.0f, 1.0f
+				1.0f, 1.0f, 1.0f
 			);
 		}
 	}
